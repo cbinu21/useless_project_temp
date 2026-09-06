@@ -1,7 +1,6 @@
 import cv2
 import time
 import math
-import random
 import mediapipe as mp
 
 from collections import deque
@@ -11,6 +10,12 @@ from mediapipe.tasks.python import vision
 
 # =========================================================
 # NPC DETECTOR™
+# Real Computer Vision + Ridiculous NPC Analysis
+# =========================================================
+
+
+# =========================================================
+# SETTINGS
 # =========================================================
 
 MOVEMENT_DURATION = 6
@@ -18,11 +23,9 @@ BLINK_DURATION = 8
 SMILE_CALIBRATION = 2
 SMILE_DURATION = 5
 
-BLINK_THRESHOLD = 0.21
-
 
 # =========================================================
-# MEDIAPIPE
+# MEDIAPIPE FACE LANDMARKER
 # =========================================================
 
 base_options = python.BaseOptions(
@@ -45,33 +48,22 @@ landmarker = vision.FaceLandmarker.create_from_options(
 # EYE LANDMARKS
 # =========================================================
 
-LEFT_EYE = [
-    33, 160, 158,
-    133, 153, 144
-]
-
-RIGHT_EYE = [
-    362, 385, 387,
-    263, 373, 380
-]
+LEFT_EYE = [33, 160, 158, 133, 153, 144]
+RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 
 
 # =========================================================
-# UTILITY
+# UTILITY FUNCTIONS
 # =========================================================
 
 def distance(a, b):
-
     return math.sqrt(
         (a.x - b.x) ** 2 +
         (a.y - b.y) ** 2
     )
 
 
-def eye_aspect_ratio(
-    landmarks,
-    eye
-):
+def eye_aspect_ratio(landmarks, eye):
 
     p1 = landmarks[eye[0]]
     p2 = landmarks[eye[1]]
@@ -89,124 +81,86 @@ def eye_aspect_ratio(
         return 0
 
     return (
-        vertical_1 +
-        vertical_2
+        vertical_1 + vertical_2
     ) / (2.0 * horizontal)
 
-
-def clamp(
-    value,
-    minimum,
-    maximum
-):
-
-    return max(
-        minimum,
-        min(
-            maximum,
-            value
-        )
-    )
-
-
-# =========================================================
-# NPC CLASSIFICATION
-# =========================================================
 
 def get_npc_class(score):
 
     if score >= 85:
         return "BACKGROUND VILLAGER"
 
-    if score >= 70:
+    elif score >= 70:
         return "SHOPKEEPER NPC"
 
-    if score >= 55:
+    elif score >= 55:
         return "QUEST NPC"
 
-    if score >= 35:
+    elif score >= 35:
         return "PLAYABLE CHARACTER"
 
-    return "CHAOTIC PLAYER"
-
-
-# =========================================================
-# NPC BEHAVIOUR
-# =========================================================
-
-def get_behaviour(score):
-
-    if score >= 85:
-
-        options = [
-            "Likely to stand in the same place forever.",
-            "May repeat the same dialogue every 30 seconds.",
-            "Background character behaviour detected.",
-            "Subject appears to have no main quest."
-        ]
-
-    elif score >= 70:
-
-        options = [
-            "Probably guarding an important doorway.",
-            "May sell suspiciously expensive potions.",
-            "Will probably say the same thing tomorrow.",
-            "Subject appears to know exactly one useful sentence."
-        ]
-
-    elif score >= 55:
-
-        options = [
-            "Possibly hiding a side quest.",
-            "Subject may know something important.",
-            "Quest-giving behaviour suspected.",
-            "Probably waiting for someone to talk to them."
-        ]
-
-    elif score >= 35:
-
-        options = [
-            "Free will detected. Unfortunately.",
-            "Subject appears capable of making choices.",
-            "Main-character tendencies detected.",
-            "Potentially dangerous levels of autonomy."
-        ]
-
     else:
-
-        options = [
-            "EXTREME FREE WILL DETECTED.",
-            "Subject refuses to follow game logic.",
-            "Definitely not an NPC.",
-            "Developer has lost control of this character."
-        ]
-
-    return random.choice(options)
+        return "CHAOTIC PLAYER"
 
 
-# =========================================================
-# NPC DIALOGUE
-# =========================================================
+def clamp(value, minimum, maximum):
 
-def get_dialogue(score):
-
-    if score >= 85:
-        return "The weather is strange today."
-
-    if score >= 70:
-        return "Welcome, traveller. Need anything?"
-
-    if score >= 55:
-        return "I have a quest for you."
-
-    if score >= 35:
-        return "You look familiar..."
-
-    return "STOP MOVING LIKE THAT."
+    return max(
+        minimum,
+        min(maximum, value)
+    )
 
 
 # =========================================================
-# APPLICATION
+# RETRO PIXEL UI HELPERS
+# =========================================================
+
+UI_GREEN = (80, 255, 170)
+UI_CYAN = (255, 220, 90)
+UI_WHITE = (245, 245, 245)
+UI_DIM = (150, 165, 170)
+UI_RED = (90, 100, 255)
+UI_DARK = (10, 14, 16)
+
+
+def pixel_text(frame, text, y, scale=1.0, thickness=2, color=UI_WHITE, x=None):
+    """Crisp, slightly pixelated terminal-style centered text."""
+    font = cv2.FONT_HERSHEY_PLAIN
+    text_size, _ = cv2.getTextSize(text, font, scale, thickness)
+    if x is None:
+        x = (frame.shape[1] - text_size[0]) // 2
+    cv2.putText(frame, text, (x, y), font, scale, color, thickness, cv2.LINE_8)
+
+
+def panel(frame, x1, y1, x2, y2, fill=(12, 18, 20), border=UI_GREEN, thickness=2):
+    cv2.rectangle(frame, (x1, y1), (x2, y2), fill, -1)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), border, thickness)
+    # Small corner cuts for a retro HUD feel.
+    cut = 10
+    cv2.line(frame, (x1, y1), (x1 + cut, y1), border, thickness)
+    cv2.line(frame, (x2 - cut, y2), (x2, y2), border, thickness)
+
+
+def progress_bar(frame, x, y, width, height, value, label=None):
+    value = clamp(float(value), 0, 100)
+    cv2.rectangle(frame, (x, y), (x + width, y + height), (25, 32, 34), -1)
+    filled = int(width * value / 100)
+    if filled > 0:
+        cv2.rectangle(frame, (x, y), (x + filled, y + height), UI_GREEN, -1)
+    cv2.rectangle(frame, (x, y), (x + width, y + height), UI_DIM, 1)
+    if label:
+        pixel_text(frame, label, y - 7, 1.1, 1, UI_DIM, x=x)
+
+
+def scanlines(frame, step=4, alpha=0.08):
+    overlay = frame.copy()
+    for y in range(0, frame.shape[0], step):
+        cv2.line(overlay, (0, y), (frame.shape[1], y), (0, 0, 0), 1)
+    return cv2.addWeighted(frame, 1.0 - alpha, overlay, alpha, 0)
+
+
+# =========================================================
+# MAIN APPLICATION
 # =========================================================
 
 class NPCDetector:
@@ -220,7 +174,6 @@ class NPCDetector:
         self.cap = cv2.VideoCapture(0)
 
         if not self.cap.isOpened():
-
             raise RuntimeError(
                 "Could not open webcam."
             )
@@ -236,12 +189,12 @@ class NPCDetector:
         )
 
         # -------------------------------------------------
-        # STATE
+        # APPLICATION STATE
         # -------------------------------------------------
 
         self.running = True
 
-        self.state = "BOOT"
+        self.state = "WELCOME"
 
         self.state_start = time.time()
 
@@ -252,15 +205,13 @@ class NPCDetector:
         # -------------------------------------------------
 
         self.movement_score = 0
-
         self.blink_score = 0
-
         self.smile_score = 0
 
         self.final_score = 0
 
         # -------------------------------------------------
-        # MOVEMENT
+        # MOVEMENT DATA
         # -------------------------------------------------
 
         self.position_history = deque(
@@ -270,7 +221,7 @@ class NPCDetector:
         self.movement_values = []
 
         # -------------------------------------------------
-        # BLINK
+        # BLINK DATA
         # -------------------------------------------------
 
         self.blink_count = 0
@@ -278,32 +229,18 @@ class NPCDetector:
         self.eye_closed = False
 
         # -------------------------------------------------
-        # SMILE
+        # SMILE DATA
         # -------------------------------------------------
 
-        self.smile_values = []
-
         self.smile_baseline = None
+
+        self.smile_values = []
 
         self.smile_triggered = False
 
         self.smile_start = None
 
         self.smile_reaction = None
-
-        # -------------------------------------------------
-        # RESULT
-        # -------------------------------------------------
-
-        self.behaviour = ""
-
-        self.dialogue = ""
-
-        # -------------------------------------------------
-        # WINDOW
-        # -------------------------------------------------
-
-        self.window_name = "NPC DETECTOR"
 
     # =====================================================
     # STATE CHANGE
@@ -315,7 +252,7 @@ class NPCDetector:
 
         self.state_start = time.time()
 
-        # MOVEMENT
+        # Reset movement
 
         if new_state == "MOVEMENT":
 
@@ -325,7 +262,7 @@ class NPCDetector:
 
             self.movement_score = 0
 
-        # BLINK
+        # Reset blink
 
         elif new_state == "BLINK":
 
@@ -335,13 +272,13 @@ class NPCDetector:
 
             self.blink_score = 0
 
-        # SMILE
+        # Reset smile
 
         elif new_state == "SMILE":
 
-            self.smile_values.clear()
-
             self.smile_baseline = None
+
+            self.smile_values.clear()
 
             self.smile_triggered = False
 
@@ -351,7 +288,7 @@ class NPCDetector:
 
             self.smile_score = 0
 
-        # WELCOME
+        # Reset final
 
         elif new_state == "WELCOME":
 
@@ -363,17 +300,27 @@ class NPCDetector:
 
     def handle_key(self, key):
 
+        # Q = quit
+
         if key == ord("q"):
 
             self.running = False
 
-        elif key == ord("r"):
+            return
+
+        # R = restart
+
+        if key == ord("r"):
 
             self.change_state(
                 "WELCOME"
             )
 
-        elif key == 32:
+            return
+
+        # SPACE = start ONLY
+
+        if key == 32:
 
             if self.state == "WELCOME":
 
@@ -382,1224 +329,311 @@ class NPCDetector:
                 )
 
     # =====================================================
-    # TEXT
+    # TEXT DRAWING
     # =====================================================
 
-    def draw_text(
-        self,
-        frame,
-        message,
-        x,
-        y,
-        scale=1.0,
-        thickness=2
-    ):
+    def draw_text(self, frame, message, y, scale=1.0, thickness=2, color=UI_WHITE, x=None):
+        pixel_text(frame, message, y, scale, thickness, color, x)
 
-        cv2.putText(
-            frame,
-            message,
-            (x, y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            scale,
-            (255, 255, 255),
-            thickness,
-            cv2.LINE_AA
-        )
+    def header(self, frame, section, index=None):
+        h, w = frame.shape[:2]
+        cv2.rectangle(frame, (0, 0), (w, 58), (7, 12, 14), -1)
+        cv2.line(frame, (0, 57), (w, 57), UI_GREEN, 2)
+        pixel_text(frame, "NPC DETECTOR", 36, 1.7, 2, UI_GREEN, x=32)
+        right = section if index is None else f"TEST {index:02d} // {section}"
+        text_size, _ = cv2.getTextSize(right, cv2.FONT_HERSHEY_PLAIN, 1.25, 1)
+        pixel_text(frame, right, 34, 1.25, 1, UI_DIM, x=w - text_size[0] - 32)
+
+    def footer(self, frame, message="R RESTART    Q QUIT"):
+        h, w = frame.shape[:2]
+        cv2.line(frame, (28, h - 45), (w - 28, h - 45), (50, 65, 68), 1)
+        pixel_text(frame, message, h - 18, 1.0, 1, UI_DIM)
 
     # =====================================================
-    # CENTERED TEXT
+    # WELCOME SCREEN
     # =====================================================
 
-    def centered_text(
-        self,
-        frame,
-        message,
-        y,
-        scale=1.0,
-        thickness=2
-    ):
+    def draw_welcome(self, frame):
+        h, w = frame.shape[:2]
+        self.header(frame, "SYSTEM READY")
 
-        font = cv2.FONT_HERSHEY_SIMPLEX
+        # Center console.
+        panel(frame, 120, 120, w - 120, h - 120, (9, 15, 17), UI_GREEN, 2)
+        pixel_text(frame, "// HUMANITY VERIFICATION SYSTEM //", 175, 1.5, 2, UI_DIM)
+        pixel_text(frame, "NPC", 280, 5.0, 6, UI_GREEN)
+        pixel_text(frame, "DETECTOR", 345, 3.0, 4, UI_WHITE)
+        pixel_text(frame, "ARE YOU ACTUALLY HUMAN?", 405, 1.6, 2, UI_CYAN)
 
-        size, _ = cv2.getTextSize(
-            message,
-            font,
-            scale,
-            thickness
-        )
+        # Fake diagnostic readout.
+        pixel_text(frame, "FACE      [ READY ]", 485, 1.15, 1, UI_DIM, x=190)
+        pixel_text(frame, "FREE WILL [ UNKNOWN ]", 520, 1.15, 1, UI_DIM, x=190)
+        pixel_text(frame, "NPC INDEX [ ARMED  ]", 555, 1.15, 1, UI_DIM, x=190)
 
-        x = (
-            frame.shape[1]
-            -
-            size[0]
-        ) // 2
-
-        self.draw_text(
-            frame,
-            message,
-            x,
-            y,
-            scale,
-            thickness
-        )
+        cv2.rectangle(frame, (w - 410, 475), (w - 180, 530), (16, 30, 26), -1)
+        cv2.rectangle(frame, (w - 410, 475), (w - 180, 530), UI_GREEN, 2)
+        pixel_text(frame, "[ SPACE ]", 512, 1.7, 2, UI_GREEN, x=w - 375)
+        self.footer(frame, "SPACE START    R RESTART    Q QUIT")
 
     # =====================================================
-    # DARK OVERLAY
+    # MOVEMENT TEST
     # =====================================================
 
-    def darken(
-        self,
-        frame,
-        amount=0.35
-    ):
+    def movement_test(self, frame, landmarks):
+        elapsed = time.time() - self.state_start
+        remaining = max(0, MOVEMENT_DURATION - int(elapsed))
+        h, w = frame.shape[:2]
+        self.header(frame, "MOVEMENT ANALYSIS", 1)
 
-        overlay = frame.copy()
-
-        cv2.rectangle(
-            overlay,
-            (0, 0),
-            (
-                frame.shape[1],
-                frame.shape[0]
-            ),
-            (0, 0, 0),
-            -1
-        )
-
-        frame[:] = cv2.addWeighted(
-            overlay,
-            amount,
-            frame,
-            1 - amount,
-            0
-        )
-
-    # =====================================================
-    # HUD BAR
-    # =====================================================
-
-    def hud_bar(
-        self,
-        frame,
-        y1,
-        y2,
-        alpha=0.40
-    ):
-
-        overlay = frame.copy()
-
-        cv2.rectangle(
-            overlay,
-            (0, y1),
-            (
-                frame.shape[1],
-                y2
-            ),
-            (0, 0, 0),
-            -1
-        )
-
-        frame[:] = cv2.addWeighted(
-            overlay,
-            alpha,
-            frame,
-            1 - alpha,
-            0
-        )
-
-    # =====================================================
-    # PROGRESS BAR
-    # =====================================================
-
-    def progress_bar(
-        self,
-        frame,
-        elapsed,
-        duration,
-        y
-    ):
-
-        width = 700
-
-        height = 10
-
-        x = (
-            frame.shape[1]
-            -
-            width
-        ) // 2
-
-        progress = clamp(
-            elapsed / duration,
-            0,
-            1
-        )
-
-        cv2.rectangle(
-            frame,
-            (x, y),
-            (
-                x + width,
-                y + height
-            ),
-            (70, 70, 70),
-            -1
-        )
-
-        cv2.rectangle(
-            frame,
-            (x, y),
-            (
-                x +
-                int(
-                    width *
-                    progress
-                ),
-                y + height
-            ),
-            (255, 255, 255),
-            -1
-        )
-
-    # =====================================================
-    # TOP BAR
-    # =====================================================
-
-    def top_bar(
-        self,
-        frame,
-        status
-    ):
-
-        self.hud_bar(
-            frame,
-            0,
-            70,
-            0.45
-        )
-
-        self.draw_text(
-            frame,
-            "NPC DETECTOR™",
-            30,
-            43,
-            0.65,
-            2
-        )
-
-        self.draw_text(
-            frame,
-            status,
-            frame.shape[1] - 280,
-            43,
-            0.55,
-            2
-        )
-
-    # =====================================================
-    # BOOT SCREEN
-    # =====================================================
-
-    def boot(
-        self,
-        frame
-    ):
-
-        elapsed = (
-            time.time()
-            -
-            self.state_start
-        )
-
-        self.darken(
-            frame,
-            0.72
-        )
-
-        self.centered_text(
-            frame,
-            "NPC DETECTOR™",
-            230,
-            2.0,
-            4
-        )
-
-        self.centered_text(
-            frame,
-            "HUMANITY VERIFICATION SYSTEM",
-            290,
-            0.65,
-            2
-        )
-
-        messages = [
-            "INITIALIZING NEURAL OBSERVATION...",
-            "LOADING HUMAN BEHAVIOUR DATABASE...",
-            "CALIBRATING SUSPICION ENGINE...",
-            "SEARCHING FOR FREE WILL...",
-            "SYSTEM READY."
-        ]
-
-        index = min(
-            int(elapsed * 1.4),
-            len(messages) - 1
-        )
-
-        self.centered_text(
-            frame,
-            messages[index],
-            390,
-            0.6,
-            2
-        )
-
-        self.progress_bar(
-            frame,
-            elapsed,
-            3.8,
-            430
-        )
-
-        if elapsed >= 4:
-
-            self.change_state(
-                "WELCOME"
-            )
-
-    # =====================================================
-    # WELCOME
-    # =====================================================
-
-    def welcome(
-        self,
-        frame
-    ):
-
-        self.darken(
-            frame,
-            0.30
-        )
-
-        self.top_bar(
-            frame,
-            "SYSTEM ONLINE"
-        )
-
-        self.centered_text(
-            frame,
-            "NPC DETECTOR™",
-            210,
-            2.0,
-            4
-        )
-
-        self.centered_text(
-            frame,
-            "HUMANITY VERIFICATION SYSTEM",
-            270,
-            0.75,
-            2
-        )
-
-        self.centered_text(
-            frame,
-            "We have serious concerns about your humanity.",
-            340,
-            0.65,
-            2
-        )
-
-        # Start button
-
-        x1 = 350
-
-        y1 = 390
-
-        x2 = frame.shape[1] - 350
-
-        y2 = 460
-
-        cv2.rectangle(
-            frame,
-            (x1, y1),
-            (x2, y2),
-            (255, 255, 255),
-            2
-        )
-
-        self.centered_text(
-            frame,
-            "[ SPACE ]  BEGIN HUMANITY TEST",
-            435,
-            0.7,
-            2
-        )
-
-        self.centered_text(
-            frame,
-            "R  RESTART       Q  QUIT",
-            535,
-            0.55,
-            1
-        )
-
-    # =====================================================
-    # MOVEMENT
-    # =====================================================
-
-    def movement_test(
-        self,
-        frame,
-        landmarks
-    ):
-
-        elapsed = (
-            time.time()
-            -
-            self.state_start
-        )
-
-        remaining = max(
-            0,
-            MOVEMENT_DURATION
-            -
-            int(elapsed)
-        )
-
-        self.top_bar(
-            frame,
-            "TEST 01 / 03"
-        )
-
-        self.centered_text(
-            frame,
-            "MOVEMENT ANALYSIS",
-            130,
-            1.2,
-            3
-        )
-
-        self.centered_text(
-            frame,
-            f"MOVE YOUR HEAD NATURALLY     {remaining}",
-            180,
-            0.65,
-            2
-        )
-
-        self.progress_bar(
-            frame,
-            elapsed,
-            MOVEMENT_DURATION,
-            210
-        )
+        pixel_text(frame, "MOVE YOUR HEAD NATURALLY", 105, 1.55, 2, UI_WHITE)
+        progress_bar(frame, 300, 125, w - 600, 14, elapsed / MOVEMENT_DURATION * 100)
+        pixel_text(frame, f"00:{remaining:02d}", 180, 2.0, 2, UI_CYAN)
 
         if landmarks:
-
             nose = landmarks[1]
+            x, y = nose.x, nose.y
+            self.position_history.append((x, y))
+            if len(self.position_history) >= 2:
+                previous_x, previous_y = self.position_history[-2]
+                movement = math.sqrt((x - previous_x) ** 2 + (y - previous_y) ** 2)
+                self.movement_values.append(movement)
 
-            x = nose.x
-
-            y = nose.y
-
-            self.position_history.append(
-                (x, y)
-            )
-
-            if len(
-                self.position_history
-            ) >= 2:
-
-                old_x, old_y = (
-                    self.position_history[-2]
-                )
-
-                movement = math.sqrt(
-                    (x - old_x) ** 2
-                    +
-                    (y - old_y) ** 2
-                )
-
-                self.movement_values.append(
-                    movement
-                )
-
-            h, w = frame.shape[:2]
-
-            cx = int(
-                nose.x * w
-            )
-
-            cy = int(
-                nose.y * h
-            )
-
-            cv2.circle(
-                frame,
-                (cx, cy),
-                12,
-                (255, 255, 255),
-                2
-            )
-
-            cv2.circle(
-                frame,
-                (cx, cy),
-                3,
-                (255, 255, 255),
-                -1
-            )
-
-            self.hud_bar(
-                frame,
-                frame.shape[0] - 85,
-                frame.shape[0],
-                0.45
-            )
-
-            self.centered_text(
-                frame,
-                "● FACE TRACKED  |  OBSERVING MOVEMENT",
-                frame.shape[0] - 42,
-                0.55,
-                2
-            )
-
+            center_x = int(nose.x * w)
+            center_y = int(nose.y * h)
+            cv2.circle(frame, (center_x, center_y), 12, UI_GREEN, 2)
+            cv2.circle(frame, (center_x, center_y), 3, UI_GREEN, -1)
+            pixel_text(frame, "● FACE TRACKED", h - 85, 1.15, 1, UI_GREEN, x=35)
         else:
+            pixel_text(frame, "! NO FACE DETECTED", h - 85, 1.15, 1, UI_RED, x=35)
 
-            self.hud_bar(
-                frame,
-                frame.shape[0] - 85,
-                frame.shape[0],
-                0.45
-            )
-
-            self.centered_text(
-                frame,
-                "● FACE NOT DETECTED",
-                frame.shape[0] - 42,
-                0.55,
-                2
-            )
+        current = 0
+        if self.movement_values:
+            current = clamp(100 - (sum(self.movement_values[-30:]) / len(self.movement_values[-30:])) * 300, 0, 100)
+        panel(frame, 35, h - 185, 360, h - 105, (9, 15, 17), (50, 65, 68), 1)
+        pixel_text(frame, "STILLNESS INDEX", h - 150, 1.0, 1, UI_DIM, x=55)
+        progress_bar(frame, 55, h - 135, 280, 12, current)
+        pixel_text(frame, f"{current:05.1f}%", h - 110, 1.0, 1, UI_WHITE, x=55)
+        self.footer(frame)
 
         if elapsed >= MOVEMENT_DURATION:
-
             if self.movement_values:
-
-                average = (
-                    sum(
-                        self.movement_values
-                    )
-                    /
-                    len(
-                        self.movement_values
-                    )
-                )
-
-                self.movement_score = clamp(
-                    100 -
-                    average * 300,
-                    0,
-                    100
-                )
-
+                average_movement = sum(self.movement_values) / len(self.movement_values)
+                self.movement_score = clamp(100 - average_movement * 300, 0, 100)
             else:
-
                 self.movement_score = 100
-
-            self.change_state(
-                "BLINK"
-            )
+            self.change_state("BLINK")
 
     # =====================================================
-    # BLINK
+    # BLINK TEST
     # =====================================================
 
-    def blink_test(
-        self,
-        frame,
-        landmarks
-    ):
+    def blink_test(self, frame, landmarks):
+        elapsed = time.time() - self.state_start
+        remaining = max(0, BLINK_DURATION - int(elapsed))
+        h, w = frame.shape[:2]
+        self.header(frame, "BLINK ANALYSIS", 2)
+        pixel_text(frame, "BLINK NATURALLY", 105, 1.55, 2, UI_WHITE)
+        progress_bar(frame, 300, 125, w - 600, 14, elapsed / BLINK_DURATION * 100)
+        pixel_text(frame, f"00:{remaining:02d}", 180, 2.0, 2, UI_CYAN)
 
-        elapsed = (
-            time.time()
-            -
-            self.state_start
-        )
-
-        remaining = max(
-            0,
-            BLINK_DURATION
-            -
-            int(elapsed)
-        )
-
-        self.top_bar(
-            frame,
-            "TEST 02 / 03"
-        )
-
-        self.centered_text(
-            frame,
-            "BLINK ANALYSIS",
-            130,
-            1.2,
-            3
-        )
-
-        self.centered_text(
-            frame,
-            f"BLINK NATURALLY     {remaining}",
-            180,
-            0.7,
-            2
-        )
-
-        self.progress_bar(
-            frame,
-            elapsed,
-            BLINK_DURATION,
-            210
-        )
-
+        ear = 0.0
         if landmarks:
-
-            left_ear = eye_aspect_ratio(
-                landmarks,
-                LEFT_EYE
-            )
-
-            right_ear = eye_aspect_ratio(
-                landmarks,
-                RIGHT_EYE
-            )
-
-            ear = (
-                left_ear +
-                right_ear
-            ) / 2
-
-            if ear < BLINK_THRESHOLD:
-
-                self.eye_closed = True
-
-                status = "EYES CLOSED"
-
-            else:
-
-                if self.eye_closed:
-
+            left_ear = eye_aspect_ratio(landmarks, LEFT_EYE)
+            right_ear = eye_aspect_ratio(landmarks, RIGHT_EYE)
+            ear = (left_ear + right_ear) / 2
+            if ear < 0.21:
+                if not self.eye_closed:
                     self.blink_count += 1
-
+                self.eye_closed = True
+            else:
                 self.eye_closed = False
 
-                status = "EYES OPEN"
-
-            self.hud_bar(
-                frame,
-                270,
-                505,
-                0.32
-            )
-
-            self.centered_text(
-                frame,
-                status,
-                350,
-                1.1,
-                3
-            )
-
-            self.centered_text(
-                frame,
-                f"BLINKS DETECTED: {self.blink_count}",
-                415,
-                0.9,
-                2
-            )
-
-            self.centered_text(
-                frame,
-                f"EYE RATIO: {ear:.2f}",
-                460,
-                0.60,
-                2
-            )
-
+            status = "EYES CLOSED" if ear < 0.21 else "EYES OPEN"
+            status_color = UI_CYAN if ear < 0.21 else UI_GREEN
+            pixel_text(frame, status, 300, 2.0, 2, status_color)
+            pixel_text(frame, f"EYE RATIO  {ear:.3f}", 350, 1.15, 1, UI_DIM)
         else:
+            pixel_text(frame, "! NO FACE DETECTED", 300, 1.4, 2, UI_RED)
 
-            self.centered_text(
-                frame,
-                "FACE NOT DETECTED",
-                350,
-                0.8,
-                2
-            )
+        panel(frame, 35, h - 185, 420, h - 105, (9, 15, 17), (50, 65, 68), 1)
+        pixel_text(frame, "BLINK COUNTER", h - 150, 1.0, 1, UI_DIM, x=55)
+        pixel_text(frame, f"{self.blink_count:02d}", h - 112, 2.2, 2, UI_GREEN, x=55)
+        pixel_text(frame, "/ 8 SEC", h - 112, 1.0, 1, UI_DIM, x=105)
+        self.footer(frame)
 
         if elapsed >= BLINK_DURATION:
-
-            if self.blink_count == 0:
-
-                self.blink_score = 95
-
-            elif self.blink_count == 1:
-
-                self.blink_score = 75
-
-            elif self.blink_count == 2:
-
-                self.blink_score = 45
-
-            elif self.blink_count <= 4:
-
-                self.blink_score = 20
-
+            blink_rate = self.blink_count * 60 / BLINK_DURATION
+            if blink_rate < 3:
+                self.blink_score = 90
+            elif blink_rate < 7:
+                self.blink_score = 65
+            elif blink_rate <= 25:
+                self.blink_score = 25
             else:
-
                 self.blink_score = 60
-
-            self.change_state(
-                "SMILE"
-            )
+            self.change_state("SMILE")
 
     # =====================================================
-    # SMILE
+    # SMILE TEST
     # =====================================================
 
-    def smile_test(
-        self,
-        frame,
-        landmarks
-    ):
-
-        elapsed = (
-            time.time()
-            -
-            self.state_start
-        )
-
-        # Calibration
+    def smile_test(self, frame, landmarks):
+        elapsed = time.time() - self.state_start
+        h, w = frame.shape[:2]
+        self.header(frame, "REACTION ANALYSIS", 3)
 
         if elapsed < SMILE_CALIBRATION:
-
-            self.top_bar(
-                frame,
-                "TEST 03 / 03"
-            )
-
-            self.centered_text(
-                frame,
-                "REACTION CALIBRATION",
-                170,
-                1.1,
-                3
-            )
-
-            self.centered_text(
-                frame,
-                "DO NOT SMILE",
-                245,
-                0.8,
-                2
-            )
-
-            self.progress_bar(
-                frame,
-                elapsed,
-                SMILE_CALIBRATION,
-                285
-            )
-
+            pixel_text(frame, "CALIBRATING EXPRESSION BASELINE", 170, 1.45, 2, UI_WHITE)
+            pixel_text(frame, "DO NOT SMILE YET", 235, 1.5, 2, UI_CYAN)
+            progress_bar(frame, 300, 275, w - 600, 14, elapsed / SMILE_CALIBRATION * 100)
             if landmarks:
-
-                mouth_width = distance(
-                    landmarks[61],
-                    landmarks[291]
-                )
-
-                face_width = distance(
-                    landmarks[234],
-                    landmarks[454]
-                )
-
+                mouth_width = distance(landmarks[61], landmarks[291])
+                face_width = distance(landmarks[234], landmarks[454])
                 if face_width > 0:
-
-                    ratio = (
-                        mouth_width /
-                        face_width
-                    )
-
-                    self.smile_values.append(
-                        ratio
-                    )
-
+                    self.smile_values.append(mouth_width / face_width)
+            self.footer(frame)
             return
 
-        # Baseline
-
         if self.smile_baseline is None:
-
             if self.smile_values:
-
-                self.smile_baseline = (
-                    sum(
-                        self.smile_values
-                    )
-                    /
-                    len(
-                        self.smile_values
-                    )
-                )
-
+                self.smile_baseline = sum(self.smile_values) / len(self.smile_values)
             else:
-
                 self.smile_baseline = 0.35
-
             self.smile_start = time.time()
 
-        test_elapsed = (
-            time.time()
-            -
-            self.smile_start
-        )
-
-        self.top_bar(
-            frame,
-            "TEST 03 / 03"
-        )
-
-        self.centered_text(
-            frame,
-            "REACTION ANALYSIS",
-            130,
-            1.2,
-            3
-        )
-
-        self.centered_text(
-            frame,
-            "SMILE!",
-            220,
-            1.8,
-            4
-        )
-
-        self.centered_text(
-            frame,
-            "HOW FAST CAN YOU LOOK HUMAN?",
-            275,
-            0.65,
-            2
-        )
-
-        self.progress_bar(
-            frame,
-            test_elapsed,
-            SMILE_DURATION,
-            310
-        )
+        test_elapsed = time.time() - self.smile_start
+        pixel_text(frame, "SMILE!", 190, 3.5, 4, UI_GREEN if not self.smile_triggered else UI_CYAN)
+        pixel_text(frame, "HOW FAST CAN YOU LOOK HUMAN?", 245, 1.35, 2, UI_WHITE)
+        progress_bar(frame, 300, 275, w - 600, 14, test_elapsed / SMILE_DURATION * 100)
 
         if landmarks:
-
-            mouth_width = distance(
-                landmarks[61],
-                landmarks[291]
-            )
-
-            face_width = distance(
-                landmarks[234],
-                landmarks[454]
-            )
-
+            mouth_width = distance(landmarks[61], landmarks[291])
+            face_width = distance(landmarks[234], landmarks[454])
             if face_width > 0:
-
-                ratio = (
-                    mouth_width /
-                    face_width
-                )
-
-                threshold = (
-                    self.smile_baseline
-                    * 1.18
-                )
-
-                if (
-                    ratio > threshold
-                    and
-                    not self.smile_triggered
-                ):
-
+                ratio = mouth_width / face_width
+                threshold = self.smile_baseline * 1.18
+                if ratio > threshold and not self.smile_triggered:
                     self.smile_triggered = True
-
-                    self.smile_reaction = (
-                        test_elapsed
-                    )
-
-                    reaction = (
-                        self.smile_reaction
-                    )
-
+                    self.smile_reaction = test_elapsed
+                    reaction = self.smile_reaction
                     if reaction < 0.4:
-
                         self.smile_score = 90
-
                     elif reaction < 0.8:
-
                         self.smile_score = 65
-
                     elif reaction < 1.5:
-
                         self.smile_score = 35
-
                     elif reaction < 3:
-
                         self.smile_score = 70
-
                     else:
-
                         self.smile_score = 85
 
         if self.smile_triggered:
-
-            self.hud_bar(
-                frame,
-                350,
-                480,
-                0.30
-            )
-
-            self.centered_text(
-                frame,
-                "✓ SMILE DETECTED",
-                405,
-                0.9,
-                3
-            )
-
-            self.centered_text(
-                frame,
-                f"REACTION TIME: {self.smile_reaction:.2f}s",
-                450,
-                0.6,
-                2
-            )
-
+            pixel_text(frame, "✓ EXPRESSION ACCEPTED", 365, 1.4, 2, UI_GREEN)
+            pixel_text(frame, f"REACTION TIME  {self.smile_reaction:.2f}s", 410, 1.2, 1, UI_DIM)
         else:
+            pixel_text(frame, "WAITING FOR HUMAN RESPONSE...", 365, 1.1, 1, UI_DIM)
 
-            self.centered_text(
-                frame,
-                "WAITING FOR HUMAN EXPRESSION...",
-                405,
-                0.6,
-                1
-            )
-
+        self.footer(frame)
         if test_elapsed >= SMILE_DURATION:
-
             if not self.smile_triggered:
-
                 self.smile_score = 90
-
-            self.change_state(
-                "ANALYZING"
-            )
+            self.change_state("ANALYZING")
 
     # =====================================================
     # ANALYSIS
     # =====================================================
 
-    def analyzing(
-        self,
-        frame
-    ):
-
-        elapsed = (
-            time.time()
-            -
-            self.state_start
-        )
-
-        self.darken(
-            frame,
-            0.78
-        )
-
-        self.top_bar(
-            frame,
-            "PROCESSING"
-        )
-
-        self.centered_text(
-            frame,
-            "HUMANITY ANALYSIS",
-            180,
-            1.4,
-            3
-        )
-
-        self.centered_text(
-            frame,
-            "PROCESSING BEHAVIOURAL EVIDENCE",
-            235,
-            0.65,
-            2
-        )
-
-        self.progress_bar(
-            frame,
-            elapsed,
-            4,
-            285
-        )
-
+    def analyzing(self, frame):
+        elapsed = time.time() - self.state_start
+        h, w = frame.shape[:2]
+        self.header(frame, "NEURAL JUDGEMENT")
+        panel(frame, 170, 130, w - 170, h - 120, (7, 12, 14), UI_GREEN, 2)
+        pixel_text(frame, "ANALYZING HUMANITY", 215, 2.3, 3, UI_WHITE)
         steps = [
-
-            "ANALYSING MOVEMENT ........ COMPLETE",
-
-            "ANALYSING OCULAR BEHAVIOUR ... COMPLETE",
-
-            "ANALYSING REACTION ........... COMPLETE",
-
-            "CALCULATING NPC PROBABILITY ...",
-
-            "GENERATING SUBJECT PROFILE ..."
+            "MEASURING UNNECESSARY MOVEMENT",
+            "COUNTING SUSPICIOUS BLINKS",
+            "CALCULATING FREE-WILL RESPONSE",
+            "CONSULTING NPC DATABASE",
+            "GENERATING ABSOLUTELY UNRELIABLE VERDICT",
         ]
+        active = min(len(steps) - 1, int(elapsed * 1.5))
+        for i, step in enumerate(steps):
+            y = 285 + i * 48
+            if i < active:
+                mark, color = "[OK]", UI_GREEN
+            elif i == active:
+                mark, color = "[>>]", UI_CYAN
+            else:
+                mark, color = "[  ]", UI_DIM
+            pixel_text(frame, f"{mark} {step}", y, 1.05, 1, color, x=235)
+        progress_bar(frame, 235, h - 180, w - 470, 16, min(100, elapsed / 3 * 100))
+        pixel_text(frame, "PLEASE REMAIN SUSPICIOUS", h - 140, 1.1, 1, UI_DIM)
 
-        index = min(
-            int(
-                elapsed * 1.25
-            ),
-            len(steps) - 1
-        )
-
-        self.centered_text(
-            frame,
-            steps[index],
-            365,
-            0.60,
-            2
-        )
-
-        if elapsed >= 4:
-
-            self.final_score = (
-
-                self.movement_score
-                * 0.40
-
-                +
-
-                self.blink_score
-                * 0.30
-
-                +
-
-                self.smile_score
-                * 0.30
-            )
-
-            self.behaviour = get_behaviour(
-                self.final_score
-            )
-
-            self.dialogue = get_dialogue(
-                self.final_score
-            )
-
-            self.change_state(
-                "RESULT"
-            )
+        if elapsed >= 3:
+            self.final_score = (self.movement_score * 0.40 + self.blink_score * 0.30 + self.smile_score * 0.30)
+            self.change_state("RESULT")
 
     # =====================================================
-    # RESULT
+    # RESULT SCREEN
     # =====================================================
 
-    def result(
-        self,
-        frame
-    ):
+    def result(self, frame):
+        npc_class = get_npc_class(self.final_score)
+        h, w = frame.shape[:2]
+        self.header(frame, "FINAL VERDICT")
 
-        self.darken(
-            frame,
-            0.72
-        )
+        panel(frame, 55, 90, w - 55, h - 75, (7, 12, 14), UI_GREEN, 2)
+        pixel_text(frame, "HUMANITY REPORT", 140, 2.0, 3, UI_WHITE)
+        pixel_text(frame, f"{self.final_score:.1f}%", 250, 5.0, 6, UI_GREEN)
+        pixel_text(frame, "NPC PROBABILITY", 292, 1.25, 2, UI_CYAN)
 
-        self.top_bar(
-            frame,
-            "ANALYSIS COMPLETE"
-        )
+        # Class badge.
+        badge_w = min(700, w - 160)
+        bx = (w - badge_w) // 2
+        cv2.rectangle(frame, (bx, 330), (bx + badge_w, 395), (15, 28, 25), -1)
+        cv2.rectangle(frame, (bx, 330), (bx + badge_w, 395), UI_GREEN, 2)
+        pixel_text(frame, npc_class, 373, 2.0, 2, UI_GREEN)
 
-        npc_class = get_npc_class(
-            self.final_score
-        )
+        labels = [
+            ("MOVEMENT", self.movement_score),
+            ("BLINK", self.blink_score),
+            ("REACTION", self.smile_score),
+        ]
+        y = 455
+        for label, value in labels:
+            pixel_text(frame, f"{label:<10} {value:05.1f}", y, 1.0, 1, UI_DIM, x=150)
+            progress_bar(frame, 430, y - 12, min(480, w - 650), 12, value)
+            y += 42
 
-        self.centered_text(
-            frame,
-            "HUMANITY REPORT",
-            115,
-            1.25,
-            3
-        )
-
-        self.centered_text(
-            frame,
-            "NPC PROBABILITY",
-            175,
-            0.60,
-            2
-        )
-
-        self.centered_text(
-            frame,
-            f"{self.final_score:.1f}%",
-            265,
-            2.25,
-            4
-        )
-
-        self.centered_text(
-            frame,
-            npc_class,
-            330,
-            1.0,
-            3
-        )
-
-        # Divider
-
-        cv2.line(
-            frame,
-            (250, 360),
-            (
-                frame.shape[1] - 250,
-                360
-            ),
-            (150, 150, 150),
-            1
-        )
-
-        # Scores
-
-        self.centered_text(
-            frame,
-            f"MOVEMENT   {self.movement_score:.0f}"
-            f"    |    "
-            f"BLINK   {self.blink_score:.0f}"
-            f"    |    "
-            f"REACTION   {self.smile_score:.0f}",
-            410,
-            0.55,
-            2
-        )
-
-        # Behaviour
-
-        self.centered_text(
-            frame,
-            "BEHAVIOURAL ASSESSMENT",
-            455,
-            0.50,
-            1
-        )
-
-        # Break behaviour into lines if needed
-
-        behaviour = self.behaviour
-
-        if len(behaviour) > 55:
-
-            split = behaviour.rfind(
-                " ",
-                0,
-                55
-            )
-
-            line1 = behaviour[:split]
-
-            line2 = behaviour[split + 1:]
-
-            self.centered_text(
-                frame,
-                line1,
-                490,
-                0.58,
-                2
-            )
-
-            self.centered_text(
-                frame,
-                line2,
-                520,
-                0.58,
-                2
-            )
-
+        # Ridiculous verdict text.
+        if npc_class == "BACKGROUND VILLAGER":
+            verdict = "LIKELY TO REPEAT THE SAME DIALOGUE FOREVER."
+        elif npc_class == "SHOPKEEPER NPC":
+            verdict = "HAS 37 POTIONS AND NO PERSONALITY UPGRADES."
+        elif npc_class == "QUEST NPC":
+            verdict = "KNOWS SOMETHING IMPORTANT. WILL NOT EXPLAIN IT."
+        elif npc_class == "PLAYABLE CHARACTER":
+            verdict = "FREE WILL DETECTED. DEVELOPER SLIGHTLY CONCERNED."
         else:
-
-            self.centered_text(
-                frame,
-                behaviour,
-                495,
-                0.58,
-                2
-            )
-
-        # Dialogue
-
-        self.centered_text(
-            frame,
-            '"' + self.dialogue + '"',
-            555,
-            0.58,
-            2
-        )
-
-        # Controls
-
-        self.centered_text(
-            frame,
-            "R  TEST AGAIN       Q  EXIT",
-            610,
-            0.55,
-            2
-        )
+            verdict = "TOO MUCH FREE WILL. NPC SYSTEM HAS LOST CONTROL."
+        pixel_text(frame, verdict, h - 125, 1.0, 1, UI_WHITE)
+        self.footer(frame, "R TEST AGAIN    Q QUIT")
 
     # =====================================================
     # MAIN LOOP
     # =====================================================
 
     def run(self):
-
-        # -------------------------------------------------
-        # FULLSCREEN
-        # -------------------------------------------------
-
-        cv2.namedWindow(
-            self.window_name,
-            cv2.WINDOW_NORMAL
-        )
-
-        cv2.setWindowProperty(
-            self.window_name,
-            cv2.WND_PROP_FULLSCREEN,
-            cv2.WINDOW_FULLSCREEN
-        )
-
-        # -------------------------------------------------
-        # LOOP
-        # -------------------------------------------------
+        cv2.namedWindow("NPC DETECTOR", cv2.WINDOW_NORMAL)
+        cv2.setWindowProperty("NPC DETECTOR", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         while self.running:
 
-            success, frame = (
-                self.cap.read()
-            )
+            success, frame = self.cap.read()
 
             if not success:
-
                 continue
 
-            # Mirror
+            # Mirror camera
 
             frame = cv2.flip(
                 frame,
@@ -1607,13 +641,17 @@ class NPCDetector:
             )
 
             # -------------------------------------------------
-            # MEDIAPIPE
+            # MEDIAPIPE IMAGE
             # -------------------------------------------------
 
             rgb = cv2.cvtColor(
                 frame,
                 cv2.COLOR_BGR2RGB
             )
+
+            # IMPORTANT:
+            # Image belongs to mediapipe,
+            # NOT mediapipe.tasks.python.vision
 
             mp_image = mp.Image(
                 image_format=mp.ImageFormat.SRGB,
@@ -1638,16 +676,19 @@ class NPCDetector:
                 )
 
             # -------------------------------------------------
-            # STATE
+            # SUBTLE RETRO DISPLAY EFFECT
+            # -------------------------------------------------
+            frame = scanlines(frame, step=4, alpha=0.10)
+
+            # -------------------------------------------------
+            # STATE MACHINE
             # -------------------------------------------------
 
-            if self.state == "BOOT":
+            if self.state == "WELCOME":
 
-                self.boot(frame)
-
-            elif self.state == "WELCOME":
-
-                self.welcome(frame)
+                self.draw_welcome(
+                    frame
+                )
 
             elif self.state == "MOVEMENT":
 
@@ -1672,18 +713,22 @@ class NPCDetector:
 
             elif self.state == "ANALYZING":
 
-                self.analyzing(frame)
+                self.analyzing(
+                    frame
+                )
 
             elif self.state == "RESULT":
 
-                self.result(frame)
+                self.result(
+                    frame
+                )
 
             # -------------------------------------------------
             # SHOW
             # -------------------------------------------------
 
             cv2.imshow(
-                self.window_name,
+                "NPC DETECTOR",
                 frame
             )
 
@@ -1698,10 +743,6 @@ class NPCDetector:
                 self.handle_key(
                     key
                 )
-
-        # -------------------------------------------------
-        # CLEANUP
-        # -------------------------------------------------
 
         self.cap.release()
 
