@@ -1,1 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NPC DETECTOR™</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#071012;color:#eafff5;font-family:"Courier New",monospace;min-height:100vh;overflow:hidden}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 4px)}
+header{height:64px;border-bottom:2px solid #50ffa8;padding:18px 28px;color:#50ffa8;font-weight:bold;letter-spacing:2px;display:flex;justify-content:space-between}
+main{max-width:1050px;margin:auto;padding:45px 25px;text-align:center}.panel{border:2px solid #50ffa8;background:#091619;padding:35px;min-height:530px}
+h1{font-size:52px;margin:20px 0 8px;letter-spacing:4px}h2{font-size:25px}.cyan{color:#ffe05a}.dim{color:#91a7a3}
+button{font:inherit;background:#10251f;color:#50ffa8;border:2px solid #50ffa8;padding:16px 32px;cursor:pointer;margin:12px}
+button:hover{background:#183b30}.hidden{display:none}
+video{width:min(720px,100%);max-height:390px;object-fit:cover;border:2px solid #50ffa8;background:#000;transform:scaleX(-1)}
+.bar{height:16px;border:1px solid #91a7a3;margin:14px auto;max-width:650px}.fill{height:100%;width:0;background:#50ffa8}
+.big{font-size:72px;color:#50ffa8;margin:15px}.badge{border:2px solid #50ffa8;padding:15px;font-size:25px;margin:20px auto;max-width:650px}
+.status{margin:18px;font-size:18px;min-height:24px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:25px auto;max-width:700px}.stat{border:1px solid #304743;padding:14px}.stat b{display:block;color:#50ffa8;font-size:22px;margin-top:8px}
+@media(max-width:700px){h1{font-size:34px}.stats{grid-template-columns:1fr}.panel{padding:20px}}
+</style>
+</head>
+<body>
+<header><span>NPC DETECTOR™</span><span id="top">SYSTEM READY</span></header>
+<main><div class="panel" id="welcome">
+<div class="dim">// HUMANITY VERIFICATION SYSTEM //</div>
+<h1>NPC<br>DETECTOR</h1><h2 class="cyan">ARE YOU ACTUALLY HUMAN?</h2>
+<p class="dim">A completely unnecessary computer-vision experiment.</p>
+<button onclick="start()">[ START HUMANITY TEST ]</button>
+<p class="dim">Your browser camera is used locally for the demo.</p>
+</div>
 
+<div class="panel hidden" id="test">
+<h2 id="testTitle">HUMANITY TEST 01 // MOVEMENT</h2>
+<video id="video" autoplay playsinline muted></video>
+<div class="bar"><div class="fill" id="fill"></div></div>
+<div class="status" id="status">INITIALIZING CAMERA...</div>
+<div class="stats"><div class="stat">MOVEMENT<b id="mv">--</b></div><div class="stat">BLINK<b id="bl">--</b></div><div class="stat">REACTION<b id="rx">--</b></div></div>
+</div>
+
+<div class="panel hidden" id="result">
+<div class="dim">FINAL VERDICT</div><div class="big" id="score">--%</div>
+<div class="cyan">NPC PROBABILITY</div>
+<div class="badge" id="class">ANALYZING...</div>
+<p id="verdict" class="dim"></p>
+<div class="stats"><div class="stat">MOVEMENT<b id="fm">--</b></div><div class="stat">BLINK<b id="fb">--</b></div><div class="stat">REACTION<b id="fr">--</b></div></div>
+<button onclick="location.reload()">[ TEST AGAIN ]</button>
+</div></main>
+
+<script>
+let stream,video=document.getElementById("video"),phase=0,startTime=0,moveScore=0,blinkScore=0,reactionScore=0;
+let lastX=null,lastY=null,totalMove=0,frames=0,blinkCount=0;
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function start(){
+ document.getElementById("welcome").classList.add("hidden");document.getElementById("test").classList.remove("hidden");
+ try{stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});video.srcObject=stream;}
+ catch(e){document.getElementById("status").textContent="CAMERA BLOCKED — DEMO CANNOT OBSERVE HUMANITY";return}
+ await wait(1000); await movement(); await blink(); await reaction(); analyze();
+}
+function setProgress(p){document.getElementById("fill").style.width=p+"%"}
+function frameMotion(){
+ let c=document.createElement("canvas"),x=c.getContext("2d"),w=80,h=60;c.width=w;c.height=h;x.drawImage(video,0,0,w,h);
+ let d=x.getImageData(0,0,w,h).data,sum=0;
+ for(let i=0;i<d.length;i+=16)sum+=Math.abs(d[i]-128)+Math.abs(d[i+1]-128)+Math.abs(d[i+2]-128);
+ return sum/d.length;
+}
+async function movement(){
+ phase=1;startTime=performance.now();document.getElementById("testTitle").textContent="HUMANITY TEST 01 // MOVEMENT";
+ document.getElementById("status").textContent="MOVE YOUR HEAD NATURALLY";
+ let prev=frameMotion();let end=performance.now()+6000;
+ while(performance.now()<end){await wait(100);let cur=frameMotion();totalMove+=Math.abs(cur-prev);prev=cur;frames++;setProgress((performance.now()-startTime)/6000*100);document.getElementById("mv").textContent=Math.min(100,totalMove/Math.max(1,frames)*3).toFixed(0)}
+ moveScore=Math.max(0,Math.min(100,100-(totalMove/Math.max(1,frames))*1.8));
+}
+async function blink(){
+ phase=2;startTime=performance.now();document.getElementById("testTitle").textContent="HUMANITY TEST 02 // BLINK";
+ document.getElementById("status").textContent="BLINK NATURALLY";
+ let base=frameMotion(),last=base,end=performance.now()+6000;
+ while(performance.now()<end){await wait(100);let cur=frameMotion();if(cur<last*.86)blinkCount++;last=cur;setProgress((performance.now()-startTime)/6000*100);document.getElementById("bl").textContent=blinkCount}
+ blinkScore=blinkCount<2?90:blinkCount<4?65:blinkCount<10?25:60;
+}
+async function reaction(){
+ phase=3;startTime=performance.now();document.getElementById("testTitle").textContent="HUMANITY TEST 03 // REACTION";
+ document.getElementById("status").textContent="WAIT FOR THE COMMAND...";
+ await wait(1800+Math.random()*1800);let t=performance.now();document.getElementById("status").textContent="SMILE!";document.getElementById("top").textContent="OBSERVING...";
+ await wait(700);let reaction=performance.now()-t;reactionScore=reaction<400?90:reaction<800?65:reaction<1500?35:70;document.getElementById("rx").textContent=(reaction/1000).toFixed(2)+"s";
+ await wait(500);
+}
+function analyze(){
+ if(stream)stream.getTracks().forEach(t=>t.stop());document.getElementById("test").classList.add("hidden");document.getElementById("result").classList.remove("hidden");document.getElementById("top").textContent="FINAL VERDICT";
+ let score=moveScore*.4+blinkScore*.3+reactionScore*.3;let cls=score>=85?"BACKGROUND VILLAGER":score>=70?"SHOPKEEPER NPC":score>=55?"QUEST NPC":score>=35?"PLAYABLE CHARACTER":"CHAOTIC PLAYER";
+ document.getElementById("score").textContent=score.toFixed(1)+"%";document.getElementById("class").textContent=cls;
+ document.getElementById("fm").textContent=moveScore.toFixed(1);document.getElementById("fb").textContent=blinkScore.toFixed(1);document.getElementById("fr").textContent=reactionScore.toFixed(1);
+ document.getElementById("verdict").textContent=cls==="BACKGROUND VILLAGER"?"LIKELY TO REPEAT THE SAME DIALOGUE FOREVER.":cls==="SHOPKEEPER NPC"?"HAS 37 POTIONS AND NO PERSONALITY UPGRADES.":cls==="QUEST NPC"?"KNOWS SOMETHING IMPORTANT. WILL NOT EXPLAIN IT.":cls==="PLAYABLE CHARACTER"?"FREE WILL DETECTED. DEVELOPER SLIGHTLY CONCERNED.":"TOO MUCH FREE WILL. NPC SYSTEM HAS LOST CONTROL.";
+}
+</script>
+</body>
+</html>
